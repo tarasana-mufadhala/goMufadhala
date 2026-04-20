@@ -21,6 +21,9 @@ interface PaymentRequest {
   fraud_status: string; duplicate_count: number;
   extracted_amount: number | null; extracted_reference: string | null;
   extracted_date: string | null; receipt_hash: string | null;
+  extracted_recipient: string | null; extracted_sender: string | null;
+  recipient_match: boolean | null; expected_amount: number | null;
+  approval_override: boolean; override_reason: string | null;
 }
 
 interface StudentInfo {
