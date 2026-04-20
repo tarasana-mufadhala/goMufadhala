@@ -650,6 +650,53 @@ const AdminPayments = () => {
           {signedReceiptUrl && <img src={signedReceiptUrl} alt="سند الدفع" className="w-full rounded-lg" />}
         </DialogContent>
       </Dialog>
+
+      {/* Override Confirmation Dialog */}
+      <Dialog open={overrideDialog} onOpenChange={setOverrideDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <ShieldAlert className="w-5 h-5" /> تأكيد الاعتماد رغم التحذيرات
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 space-y-1.5">
+              <p className="font-semibold text-destructive">المخاطر المرصودة:</p>
+              <ul className="text-xs text-destructive/90 space-y-1 list-disc pr-5">
+                {computeRiskReasons(selectedRequest).map((r, i) => (<li key={i}>{r}</li>))}
+              </ul>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              يجب كتابة سبب صريح للتجاوز (10 أحرف على الأقل). سيُسجَّل السبب باسمك وسيظهر في سجل المراجعة لأي مراجعة لاحقة.
+            </p>
+            <div className="space-y-1.5">
+              <Label>سبب التجاوز <span className="text-destructive">*</span></Label>
+              <Textarea
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                placeholder="مثال: تواصلت مع الطالب وتأكدت من صحة التحويل عبر..."
+                rows={4}
+              />
+              <p className={`text-xs ${overrideReason.trim().length < 10 ? "text-destructive" : "text-muted-foreground"}`}>
+                {overrideReason.trim().length}/10 حرف
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button
+                onClick={handleConfirmOverride}
+                disabled={saving || overrideReason.trim().length < 10}
+                variant="destructive"
+                className="flex-1"
+              >
+                <CheckCircle className="w-4 h-4 ml-1" /> تأكيد الاعتماد
+              </Button>
+              <Button onClick={() => setOverrideDialog(false)} disabled={saving} variant="outline" className="flex-1">
+                إلغاء
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       </PermissionGate>
     </AdminLayout>
   );
