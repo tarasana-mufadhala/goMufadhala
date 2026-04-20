@@ -12,6 +12,28 @@ async function sha256Hex(data: ArrayBuffer): Promise<string> {
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+function normalizeName(name: string): string {
+  return name
+    .replace(/[\s\u200c\u200d]+/g, " ")
+    .trim()
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .toLowerCase();
+}
+
+function namesMatch(extracted: string, expected: string): boolean {
+  const a = normalizeName(extracted);
+  const b = normalizeName(expected);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true;
+  const aParts = a.split(" ").filter(Boolean);
+  const bParts = b.split(" ").filter(Boolean);
+  const common = aParts.filter((p) => bParts.includes(p));
+  return common.length >= Math.min(2, Math.min(aParts.length, bParts.length));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
