@@ -321,6 +321,7 @@ serve(async (req) => {
       extracted_sender: extractedSender,
       recipient_match: recipientMatch,
       expected_recipient: expectedRecipient,
+      auto_approval_scheduled_at: autoApprovalScheduledAt,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
