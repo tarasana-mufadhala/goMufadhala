@@ -166,6 +166,17 @@ const AdminPayments = () => {
         setAnalysis({ sender_name: null, recipient_name: null, amount: null, transaction_id: null, is_match: false, error: data.error });
       } else {
         setAnalysis(data as ReceiptAnalysis);
+        // Persist analysis to DB so the DB trigger can enforce the rule even if admin tries to approve
+        if (selectedRequest && data) {
+          const updates: any = {
+            extracted_recipient: data.recipient_name ?? null,
+            extracted_sender: data.sender_name ?? null,
+            recipient_match: typeof data.is_match === "boolean" ? data.is_match : null,
+          };
+          await supabase.from("payment_requests").update(updates).eq("id", selectedRequest.id);
+          // Reflect in local state
+          setSelectedRequest({ ...selectedRequest, ...updates });
+        }
         if (data && !data.is_match) {
           const extractedName = data.recipient_name || "غير واضح";
           const expectedName = getMethodAccountName(selectedRequest?.payment_method_id ?? null) || "غير محدد";
@@ -180,7 +191,7 @@ const AdminPayments = () => {
     } finally {
       setAnalyzing(false);
     }
-  }, []);
+  }, [selectedRequest]);
 
   const handleReview = async (req: PaymentRequest) => {
     setSelectedRequest(req);
@@ -214,14 +225,55 @@ const AdminPayments = () => {
     setReceiptDialog(true);
   };
 
-  const handleApprove = async () => {
+  // Compute risk reasons for the currently selected request (used to gate approval)
+  const computeRiskReasons = (req: PaymentRequest | null): string[] => {
+    if (!req) return [];
+    const reasons: string[] = [];
+    if (req.fraud_status === "suspicious") reasons.push("السند مصنّف كمشبوه (تكرار أو تطابق هاش)");
+    if (req.fraud_status === "review") reasons.push("السند يحتاج مراجعة (تكرار محتمل أو فارق مبلغ)");
+    if (req.recipient_match === false) reasons.push("اسم المستلم في السند لا يطابق الحساب الرسمي");
+    if (req.expected_amount != null && req.extracted_amount != null && Number(req.expected_amount) !== Number(req.extracted_amount)) {
+      reasons.push(`المبلغ المستخرج (${Number(req.extracted_amount).toLocaleString()}) ≠ المتوقع (${Number(req.expected_amount).toLocaleString()})`);
+    }
+    if (req.duplicate_count > 0) reasons.push(`السند مكرر (${req.duplicate_count} مرات)`);
+    return reasons;
+  };
+
+  const requestApprove = () => {
+    if (!selectedRequest) return;
+    const reasons = computeRiskReasons(selectedRequest);
+    if (reasons.length === 0) {
+      // No risk → approve immediately
+      doApprove(false, null);
+      return;
+    }
+    // Risk present → open override dialog
+    setOverrideReason("");
+    setOverrideDialog(true);
+  };
+
+  const doApprove = async (override: boolean, reason: string | null) => {
     if (!selectedRequest || !user) return;
     setSaving(true);
     const { error: prError } = await supabase.from("payment_requests").update({
-      status: "approved", admin_notes: adminNotes || null,
-      reviewed_at: new Date().toISOString(), reviewed_by: user.id,
+      status: "approved",
+      admin_notes: adminNotes || null,
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: user.id,
+      approval_override: override,
+      override_reason: override ? reason : null,
     }).eq("id", selectedRequest.id);
-    if (prError) { toast({ variant: "destructive", title: prError.message }); setSaving(false); return; }
+    if (prError) {
+      toast({
+        variant: "destructive",
+        title: "تعذّر اعتماد الطلب",
+        description: prError.message.includes("تجاوز") || prError.message.includes("تأكيد")
+          ? prError.message
+          : `${prError.message} — يرجى مراجعة شروط الحماية.`,
+      });
+      setSaving(false);
+      return;
+    }
 
     if (selectedRequest.subscription_id) {
       const now = new Date();
@@ -229,8 +281,19 @@ const AdminPayments = () => {
         status: "active", starts_at: now.toISOString(),
       }).eq("id", selectedRequest.subscription_id);
     }
-    toast({ title: "تمت الموافقة على الطلب وتفعيل الاشتراك" });
-    setReviewDialog(false); setSaving(false); fetchData();
+    toast({ title: override ? "تم الاعتماد مع تجاوز مسجَّل" : "تمت الموافقة على الطلب وتفعيل الاشتراك" });
+    setOverrideDialog(false);
+    setReviewDialog(false);
+    setSaving(false);
+    fetchData();
+  };
+
+  const handleConfirmOverride = () => {
+    if (overrideReason.trim().length < 10) {
+      toast({ variant: "destructive", title: "سبب التجاوز يجب أن يكون 10 أحرف على الأقل" });
+      return;
+    }
+    doApprove(true, overrideReason.trim());
   };
 
   const handleReject = async () => {
