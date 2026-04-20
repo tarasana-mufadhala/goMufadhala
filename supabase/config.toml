@@ -1,1 +1,4 @@
 project_id = "lrjkrwoyrasegceqgttc"
+
+[functions.auto-approve-payments]
+verify_jwt = false
