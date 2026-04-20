@@ -93,6 +93,29 @@ serve(async (req) => {
     let extractedAmount: number | null = null;
     let extractedReference: string | null = null;
     let extractedDate: string | null = null;
+    let extractedRecipient: string | null = null;
+    let extractedSender: string | null = null;
+    let recipientMatch: boolean | null = null;
+
+    // Lookup expected recipient (account_name) for this payment method
+    let expectedRecipient: string | null = null;
+    try {
+      const { data: prRow } = await adminClient
+        .from("payment_requests")
+        .select("payment_method_id")
+        .eq("id", payment_request_id)
+        .maybeSingle();
+      if (prRow?.payment_method_id) {
+        const { data: pm } = await adminClient
+          .from("payment_methods")
+          .select("account_name")
+          .eq("id", prRow.payment_method_id)
+          .maybeSingle();
+        expectedRecipient = pm?.account_name ?? null;
+      }
+    } catch (e) {
+      console.error("expected recipient lookup failed:", e);
+    }
 
     try {
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -115,12 +138,14 @@ serve(async (req) => {
                 {
                   type: "text",
                   text: `حلل صورة إيصال/سند الدفع واستخرج:
-1. المبلغ (رقم فقط)
-2. رقم العملية أو المرجع
-3. التاريخ
+1. اسم المرسل (من قام بالتحويل)
+2. اسم المستلم (صاحب الحساب المحول إليه)
+3. المبلغ (رقم فقط)
+4. رقم العملية أو المرجع
+5. التاريخ
 
 أجب بصيغة JSON فقط:
-{"amount": "...", "reference": "...", "date": "..."}
+{"sender_name": "...", "recipient_name": "...", "amount": "...", "reference": "...", "date": "..."}
 إذا لم تستطع قراءة حقل اكتب null.`,
                 },
               ],
@@ -140,6 +165,16 @@ serve(async (req) => {
             }
             extractedReference = parsed.reference || null;
             extractedDate = parsed.date || null;
+            extractedRecipient = parsed.recipient_name || null;
+            extractedSender = parsed.sender_name || null;
+
+            // Compute recipient match
+            if (expectedRecipient && extractedRecipient) {
+              recipientMatch = namesMatch(extractedRecipient, expectedRecipient);
+              if (recipientMatch === false && fraudStatus === "clean") {
+                fraudStatus = "review";
+              }
+            }
           }
         }
       }
