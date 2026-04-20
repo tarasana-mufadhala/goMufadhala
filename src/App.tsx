@@ -73,6 +73,7 @@ const AdminPastExams = lazy(() => import("./pages/admin/AdminPastExams"));
 const AdminRepeatedPastQuestions = lazy(() => import("./pages/admin/AdminRepeatedPastQuestions"));
 const AdminProfile = lazy(() => import("./pages/admin/AdminProfile"));
 const AdminAIGenerationLimits = lazy(() => import("./pages/admin/AdminAIGenerationLimits"));
+const AdminAutoApprovalLog = lazy(() => import("./pages/admin/AdminAutoApprovalLog"));
 const Settings = lazy(() => import("./pages/Settings"));
 const DeleteAccount = lazy(() => import("./pages/DeleteAccount"));
 const PublicDeleteAccount = lazy(() => import("./pages/PublicDeleteAccount"));
@@ -202,6 +203,7 @@ function App() {
                   <Route path="/admin/repeated-past-questions" element={<AdminRepeatedPastQuestions />} />
                   <Route path="/admin/profile" element={<AdminProfile />} />
                   <Route path="/admin/ai-limits" element={<AdminAIGenerationLimits />} />
+                  <Route path="/admin/auto-approval-log" element={<AdminAutoApprovalLog />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
                 </PageShell>
