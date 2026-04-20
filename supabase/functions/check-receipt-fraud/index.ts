@@ -12,6 +12,28 @@ async function sha256Hex(data: ArrayBuffer): Promise<string> {
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+function normalizeName(name: string): string {
+  return name
+    .replace(/[\s\u200c\u200d]+/g, " ")
+    .trim()
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .toLowerCase();
+}
+
+function namesMatch(extracted: string, expected: string): boolean {
+  const a = normalizeName(extracted);
+  const b = normalizeName(expected);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true;
+  const aParts = a.split(" ").filter(Boolean);
+  const bParts = b.split(" ").filter(Boolean);
+  const common = aParts.filter((p) => bParts.includes(p));
+  return common.length >= Math.min(2, Math.min(aParts.length, bParts.length));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -93,6 +115,29 @@ serve(async (req) => {
     let extractedAmount: number | null = null;
     let extractedReference: string | null = null;
     let extractedDate: string | null = null;
+    let extractedRecipient: string | null = null;
+    let extractedSender: string | null = null;
+    let recipientMatch: boolean | null = null;
+
+    // Lookup expected recipient (account_name) for this payment method
+    let expectedRecipient: string | null = null;
+    try {
+      const { data: prRow } = await adminClient
+        .from("payment_requests")
+        .select("payment_method_id")
+        .eq("id", payment_request_id)
+        .maybeSingle();
+      if (prRow?.payment_method_id) {
+        const { data: pm } = await adminClient
+          .from("payment_methods")
+          .select("account_name")
+          .eq("id", prRow.payment_method_id)
+          .maybeSingle();
+        expectedRecipient = pm?.account_name ?? null;
+      }
+    } catch (e) {
+      console.error("expected recipient lookup failed:", e);
+    }
 
     try {
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -115,12 +160,14 @@ serve(async (req) => {
                 {
                   type: "text",
                   text: `حلل صورة إيصال/سند الدفع واستخرج:
-1. المبلغ (رقم فقط)
-2. رقم العملية أو المرجع
-3. التاريخ
+1. اسم المرسل (من قام بالتحويل)
+2. اسم المستلم (صاحب الحساب المحول إليه)
+3. المبلغ (رقم فقط)
+4. رقم العملية أو المرجع
+5. التاريخ
 
 أجب بصيغة JSON فقط:
-{"amount": "...", "reference": "...", "date": "..."}
+{"sender_name": "...", "recipient_name": "...", "amount": "...", "reference": "...", "date": "..."}
 إذا لم تستطع قراءة حقل اكتب null.`,
                 },
               ],
@@ -140,6 +187,16 @@ serve(async (req) => {
             }
             extractedReference = parsed.reference || null;
             extractedDate = parsed.date || null;
+            extractedRecipient = parsed.recipient_name || null;
+            extractedSender = parsed.sender_name || null;
+
+            // Compute recipient match
+            if (expectedRecipient && extractedRecipient) {
+              recipientMatch = namesMatch(extractedRecipient, expectedRecipient);
+              if (recipientMatch === false && fraudStatus === "clean") {
+                fraudStatus = "review";
+              }
+            }
           }
         }
       }
@@ -177,7 +234,27 @@ serve(async (req) => {
       }
     }
 
-    // Update the payment request with fraud data
+    // Phase 4: Compare extracted amount with expected amount on this request
+    // Any mismatch (even 1 unit) = review (decided by user)
+    try {
+      const { data: prRow } = await adminClient
+        .from("payment_requests")
+        .select("expected_amount")
+        .eq("id", payment_request_id)
+        .maybeSingle();
+
+      if (prRow?.expected_amount != null && extractedAmount != null) {
+        const expected = Number(prRow.expected_amount);
+        if (!Number.isNaN(expected) && expected !== extractedAmount) {
+          // promote to at least review; keep suspicious if already there
+          if (fraudStatus === "clean") fraudStatus = "review";
+        }
+      }
+    } catch (e) {
+      console.error("amount-vs-expected check failed (non-critical):", e);
+    }
+
+    // Update the payment request with fraud data + extracted recipient/sender + match
     const { error: updateErr } = await adminClient
       .from("payment_requests")
       .update({
@@ -185,6 +262,9 @@ serve(async (req) => {
         extracted_amount: extractedAmount,
         extracted_reference: extractedReference,
         extracted_date: extractedDate,
+        extracted_recipient: extractedRecipient,
+        extracted_sender: extractedSender,
+        recipient_match: recipientMatch,
         fraud_status: fraudStatus,
         duplicate_count: duplicateCount,
       })
@@ -200,6 +280,10 @@ serve(async (req) => {
       extracted_amount: extractedAmount,
       extracted_reference: extractedReference,
       extracted_date: extractedDate,
+      extracted_recipient: extractedRecipient,
+      extracted_sender: extractedSender,
+      recipient_match: recipientMatch,
+      expected_recipient: expectedRecipient,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

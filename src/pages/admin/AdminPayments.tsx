@@ -21,6 +21,9 @@ interface PaymentRequest {
   fraud_status: string; duplicate_count: number;
   extracted_amount: number | null; extracted_reference: string | null;
   extracted_date: string | null; receipt_hash: string | null;
+  extracted_recipient: string | null; extracted_sender: string | null;
+  recipient_match: boolean | null; expected_amount: number | null;
+  approval_override: boolean; override_reason: string | null;
 }
 
 interface StudentInfo {
@@ -58,6 +61,8 @@ const AdminPayments = () => {
   const [signedReceiptUrl, setSignedReceiptUrl] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<ReceiptAnalysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [overrideDialog, setOverrideDialog] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
 
   const fetchData = async () => {
     const [{ data: r }, { data: s }, { data: m }] = await Promise.all([
@@ -163,6 +168,17 @@ const AdminPayments = () => {
         setAnalysis({ sender_name: null, recipient_name: null, amount: null, transaction_id: null, is_match: false, error: data.error });
       } else {
         setAnalysis(data as ReceiptAnalysis);
+        // Persist analysis to DB so the DB trigger can enforce the rule even if admin tries to approve
+        if (selectedRequest && data) {
+          const updates: any = {
+            extracted_recipient: data.recipient_name ?? null,
+            extracted_sender: data.sender_name ?? null,
+            recipient_match: typeof data.is_match === "boolean" ? data.is_match : null,
+          };
+          await supabase.from("payment_requests").update(updates).eq("id", selectedRequest.id);
+          // Reflect in local state
+          setSelectedRequest({ ...selectedRequest, ...updates });
+        }
         if (data && !data.is_match) {
           const extractedName = data.recipient_name || "غير واضح";
           const expectedName = getMethodAccountName(selectedRequest?.payment_method_id ?? null) || "غير محدد";
@@ -177,7 +193,7 @@ const AdminPayments = () => {
     } finally {
       setAnalyzing(false);
     }
-  }, []);
+  }, [selectedRequest]);
 
   const handleReview = async (req: PaymentRequest) => {
     setSelectedRequest(req);
@@ -211,14 +227,55 @@ const AdminPayments = () => {
     setReceiptDialog(true);
   };
 
-  const handleApprove = async () => {
+  // Compute risk reasons for the currently selected request (used to gate approval)
+  const computeRiskReasons = (req: PaymentRequest | null): string[] => {
+    if (!req) return [];
+    const reasons: string[] = [];
+    if (req.fraud_status === "suspicious") reasons.push("السند مصنّف كمشبوه (تكرار أو تطابق هاش)");
+    if (req.fraud_status === "review") reasons.push("السند يحتاج مراجعة (تكرار محتمل أو فارق مبلغ)");
+    if (req.recipient_match === false) reasons.push("اسم المستلم في السند لا يطابق الحساب الرسمي");
+    if (req.expected_amount != null && req.extracted_amount != null && Number(req.expected_amount) !== Number(req.extracted_amount)) {
+      reasons.push(`المبلغ المستخرج (${Number(req.extracted_amount).toLocaleString()}) ≠ المتوقع (${Number(req.expected_amount).toLocaleString()})`);
+    }
+    if (req.duplicate_count > 0) reasons.push(`السند مكرر (${req.duplicate_count} مرات)`);
+    return reasons;
+  };
+
+  const requestApprove = () => {
+    if (!selectedRequest) return;
+    const reasons = computeRiskReasons(selectedRequest);
+    if (reasons.length === 0) {
+      // No risk → approve immediately
+      doApprove(false, null);
+      return;
+    }
+    // Risk present → open override dialog
+    setOverrideReason("");
+    setOverrideDialog(true);
+  };
+
+  const doApprove = async (override: boolean, reason: string | null) => {
     if (!selectedRequest || !user) return;
     setSaving(true);
     const { error: prError } = await supabase.from("payment_requests").update({
-      status: "approved", admin_notes: adminNotes || null,
-      reviewed_at: new Date().toISOString(), reviewed_by: user.id,
+      status: "approved",
+      admin_notes: adminNotes || null,
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: user.id,
+      approval_override: override,
+      override_reason: override ? reason : null,
     }).eq("id", selectedRequest.id);
-    if (prError) { toast({ variant: "destructive", title: prError.message }); setSaving(false); return; }
+    if (prError) {
+      toast({
+        variant: "destructive",
+        title: "تعذّر اعتماد الطلب",
+        description: prError.message.includes("تجاوز") || prError.message.includes("تأكيد")
+          ? prError.message
+          : `${prError.message} — يرجى مراجعة شروط الحماية.`,
+      });
+      setSaving(false);
+      return;
+    }
 
     if (selectedRequest.subscription_id) {
       const now = new Date();
@@ -226,8 +283,19 @@ const AdminPayments = () => {
         status: "active", starts_at: now.toISOString(),
       }).eq("id", selectedRequest.subscription_id);
     }
-    toast({ title: "تمت الموافقة على الطلب وتفعيل الاشتراك" });
-    setReviewDialog(false); setSaving(false); fetchData();
+    toast({ title: override ? "تم الاعتماد مع تجاوز مسجَّل" : "تمت الموافقة على الطلب وتفعيل الاشتراك" });
+    setOverrideDialog(false);
+    setReviewDialog(false);
+    setSaving(false);
+    fetchData();
+  };
+
+  const handleConfirmOverride = () => {
+    if (overrideReason.trim().length < 10) {
+      toast({ variant: "destructive", title: "سبب التجاوز يجب أن يكون 10 أحرف على الأقل" });
+      return;
+    }
+    doApprove(true, overrideReason.trim());
   };
 
   const handleReject = async () => {
@@ -388,7 +456,11 @@ const AdminPayments = () => {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between"><span className="text-muted-foreground">الطالب:</span><span className="font-medium">{getStudentName(selectedRequest.user_id)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">المبلغ:</span><span className="font-medium">{selectedRequest.amount.toLocaleString()} {selectedRequest.currency}</span></div>
+                {selectedRequest.expected_amount != null && Number(selectedRequest.expected_amount) !== Number(selectedRequest.amount) && (
+                  <div className="flex justify-between"><span className="text-muted-foreground">المتوقع:</span><span className="font-medium">{Number(selectedRequest.expected_amount).toLocaleString()} {selectedRequest.currency}</span></div>
+                )}
                 <div className="flex justify-between"><span className="text-muted-foreground">طريقة الدفع:</span><span className="font-medium">{getMethodName(selectedRequest.payment_method_id)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">المستلم الرسمي:</span><span className="font-medium">{getMethodAccountName(selectedRequest.payment_method_id) || "-"}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">التاريخ:</span><span className="font-medium">{new Date(selectedRequest.created_at).toLocaleDateString("ar")}</span></div>
               </div>
 
@@ -405,13 +477,31 @@ const AdminPayments = () => {
                     ⚠️ هذا السند تم استخدامه {selectedRequest.duplicate_count} مرات
                   </div>
                 )}
-                {(selectedRequest.extracted_amount || selectedRequest.extracted_reference || selectedRequest.extracted_date) && (
+                {(selectedRequest.extracted_amount || selectedRequest.extracted_reference || selectedRequest.extracted_date || selectedRequest.extracted_recipient) && (
                   <div className="space-y-1 text-xs">
                     <p className="font-semibold text-muted-foreground">بيانات مستخرجة من السند:</p>
                     {selectedRequest.extracted_amount && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">المبلغ المستخرج:</span>
-                        <span className="font-medium">{selectedRequest.extracted_amount.toLocaleString()}</span>
+                        <span className={`font-medium ${selectedRequest.expected_amount != null && Number(selectedRequest.expected_amount) !== Number(selectedRequest.extracted_amount) ? "text-destructive" : ""}`}>
+                          {selectedRequest.extracted_amount.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                    {selectedRequest.extracted_recipient && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">المستلم في السند:</span>
+                        <span className={`font-medium ${selectedRequest.recipient_match === false ? "text-destructive" : ""}`}>
+                          {selectedRequest.extracted_recipient}
+                        </span>
+                      </div>
+                    )}
+                    {selectedRequest.recipient_match !== null && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">تطابق المستلم:</span>
+                        <span className={`font-medium ${selectedRequest.recipient_match ? "text-green-600" : "text-destructive"}`}>
+                          {selectedRequest.recipient_match ? "✔ مطابق" : "✘ غير مطابق"}
+                        </span>
                       </div>
                     )}
                     {selectedRequest.extracted_reference && (
@@ -516,14 +606,37 @@ const AdminPayments = () => {
                 <Label>ملاحظات الإدارة</Label>
                 <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} placeholder="ملاحظات أو سبب الرفض..." />
               </div>
-              <div className="flex gap-2">
-                <Button onClick={handleApprove} disabled={saving} className="flex-1 bg-green-600 hover:bg-green-700">
-                  <CheckCircle className="w-4 h-4 ml-1" /> اعتماد وتفعيل
-                </Button>
-                <Button onClick={handleReject} disabled={saving} variant="destructive" className="flex-1">
-                  <XCircle className="w-4 h-4 ml-1" /> رفض
-                </Button>
-              </div>
+              {(() => {
+                const reasons = computeRiskReasons(selectedRequest);
+                const hasRisk = reasons.length > 0;
+                return (
+                  <>
+                    {hasRisk && (
+                      <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 space-y-1.5">
+                        <p className="text-sm font-semibold text-destructive flex items-center gap-1.5">
+                          <ShieldAlert className="w-4 h-4" />
+                          تحذيرات قبل الاعتماد:
+                        </p>
+                        <ul className="text-xs text-destructive/90 space-y-1 list-disc pr-5">
+                          {reasons.map((r, i) => (<li key={i}>{r}</li>))}
+                        </ul>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={requestApprove}
+                        disabled={saving}
+                        className={`flex-1 ${hasRisk ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : "bg-green-600 hover:bg-green-700"}`}
+                      >
+                        <CheckCircle className="w-4 h-4 ml-1" /> {hasRisk ? "اعتماد رغم التحذيرات" : "اعتماد وتفعيل"}
+                      </Button>
+                      <Button onClick={handleReject} disabled={saving} variant="destructive" className="flex-1">
+                        <XCircle className="w-4 h-4 ml-1" /> رفض
+                      </Button>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           )}
           </div>
@@ -535,6 +648,53 @@ const AdminPayments = () => {
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>سند الدفع</DialogTitle></DialogHeader>
           {signedReceiptUrl && <img src={signedReceiptUrl} alt="سند الدفع" className="w-full rounded-lg" />}
+        </DialogContent>
+      </Dialog>
+
+      {/* Override Confirmation Dialog */}
+      <Dialog open={overrideDialog} onOpenChange={setOverrideDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <ShieldAlert className="w-5 h-5" /> تأكيد الاعتماد رغم التحذيرات
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 space-y-1.5">
+              <p className="font-semibold text-destructive">المخاطر المرصودة:</p>
+              <ul className="text-xs text-destructive/90 space-y-1 list-disc pr-5">
+                {computeRiskReasons(selectedRequest).map((r, i) => (<li key={i}>{r}</li>))}
+              </ul>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              يجب كتابة سبب صريح للتجاوز (10 أحرف على الأقل). سيُسجَّل السبب باسمك وسيظهر في سجل المراجعة لأي مراجعة لاحقة.
+            </p>
+            <div className="space-y-1.5">
+              <Label>سبب التجاوز <span className="text-destructive">*</span></Label>
+              <Textarea
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                placeholder="مثال: تواصلت مع الطالب وتأكدت من صحة التحويل عبر..."
+                rows={4}
+              />
+              <p className={`text-xs ${overrideReason.trim().length < 10 ? "text-destructive" : "text-muted-foreground"}`}>
+                {overrideReason.trim().length}/10 حرف
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button
+                onClick={handleConfirmOverride}
+                disabled={saving || overrideReason.trim().length < 10}
+                variant="destructive"
+                className="flex-1"
+              >
+                <CheckCircle className="w-4 h-4 ml-1" /> تأكيد الاعتماد
+              </Button>
+              <Button onClick={() => setOverrideDialog(false)} disabled={saving} variant="outline" className="flex-1">
+                إلغاء
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
       </PermissionGate>

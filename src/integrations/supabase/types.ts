@@ -875,21 +875,26 @@ export type Database = {
         Row: {
           admin_notes: string | null
           amount: number
+          approval_override: boolean
           created_at: string
           currency: string
           duplicate_count: number
           expected_amount: number | null
           extracted_amount: number | null
           extracted_date: string | null
+          extracted_recipient: string | null
           extracted_reference: string | null
+          extracted_sender: string | null
           fraud_status: string
           id: string
+          override_reason: string | null
           payment_method_id: string | null
           pricing_source: string | null
           pricing_zone: string | null
           promo_code_id: string | null
           receipt_hash: string | null
           receipt_url: string | null
+          recipient_match: boolean | null
           reviewed_at: string | null
           reviewed_by: string | null
           status: string
@@ -900,21 +905,26 @@ export type Database = {
         Insert: {
           admin_notes?: string | null
           amount: number
+          approval_override?: boolean
           created_at?: string
           currency?: string
           duplicate_count?: number
           expected_amount?: number | null
           extracted_amount?: number | null
           extracted_date?: string | null
+          extracted_recipient?: string | null
           extracted_reference?: string | null
+          extracted_sender?: string | null
           fraud_status?: string
           id?: string
+          override_reason?: string | null
           payment_method_id?: string | null
           pricing_source?: string | null
           pricing_zone?: string | null
           promo_code_id?: string | null
           receipt_hash?: string | null
           receipt_url?: string | null
+          recipient_match?: boolean | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           status?: string
@@ -925,21 +935,26 @@ export type Database = {
         Update: {
           admin_notes?: string | null
           amount?: number
+          approval_override?: boolean
           created_at?: string
           currency?: string
           duplicate_count?: number
           expected_amount?: number | null
           extracted_amount?: number | null
           extracted_date?: string | null
+          extracted_recipient?: string | null
           extracted_reference?: string | null
+          extracted_sender?: string | null
           fraud_status?: string
           id?: string
+          override_reason?: string | null
           payment_method_id?: string | null
           pricing_source?: string | null
           pricing_zone?: string | null
           promo_code_id?: string | null
           receipt_hash?: string | null
           receipt_url?: string | null
+          recipient_match?: boolean | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           status?: string
