@@ -740,11 +740,11 @@ const Subscription = () => {
 
                         {/* Dynamic labels: network_transfer uses phone-style labels, others use account-style */}
                         {(() => {
-                          const isNetworkTransfer = selectedMethod.type === "network_transfer";
-                          const numberLabel = isNetworkTransfer ? "رقم التلفون" : "رقم الحساب";
-                          const nameLabel = isNetworkTransfer ? "اسم مستلم الحوالة" : "اسم صاحب الحساب";
-                          const numberCopyKey = isNetworkTransfer ? "رقم التلفون" : "رقم الحساب";
-                          const nameCopyKey = isNetworkTransfer ? "اسم المستلم" : "اسم الحساب";
+                          const usePhoneLabels = selectedMethod.type === "network_transfer" || selectedMethod.type === "kuraimi_transfer";
+                          const numberLabel = usePhoneLabels ? "رقم التلفون" : "رقم الحساب";
+                          const nameLabel = usePhoneLabels ? "اسم مستلم الحوالة" : "اسم صاحب الحساب";
+                          const numberCopyKey = usePhoneLabels ? "رقم التلفون" : "رقم الحساب";
+                          const nameCopyKey = usePhoneLabels ? "اسم المستلم" : "اسم الحساب";
                           return (
                             <>
                               {/* Account number / phone — large and copyable */}
