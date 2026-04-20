@@ -61,6 +61,8 @@ const AdminPayments = () => {
   const [signedReceiptUrl, setSignedReceiptUrl] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<ReceiptAnalysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [overrideDialog, setOverrideDialog] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
 
   const fetchData = async () => {
     const [{ data: r }, { data: s }, { data: m }] = await Promise.all([
