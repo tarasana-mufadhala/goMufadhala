@@ -456,7 +456,11 @@ const AdminPayments = () => {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between"><span className="text-muted-foreground">الطالب:</span><span className="font-medium">{getStudentName(selectedRequest.user_id)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">المبلغ:</span><span className="font-medium">{selectedRequest.amount.toLocaleString()} {selectedRequest.currency}</span></div>
+                {selectedRequest.expected_amount != null && Number(selectedRequest.expected_amount) !== Number(selectedRequest.amount) && (
+                  <div className="flex justify-between"><span className="text-muted-foreground">المتوقع:</span><span className="font-medium">{Number(selectedRequest.expected_amount).toLocaleString()} {selectedRequest.currency}</span></div>
+                )}
                 <div className="flex justify-between"><span className="text-muted-foreground">طريقة الدفع:</span><span className="font-medium">{getMethodName(selectedRequest.payment_method_id)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">المستلم الرسمي:</span><span className="font-medium">{getMethodAccountName(selectedRequest.payment_method_id) || "-"}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">التاريخ:</span><span className="font-medium">{new Date(selectedRequest.created_at).toLocaleDateString("ar")}</span></div>
               </div>
 
