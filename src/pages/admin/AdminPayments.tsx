@@ -584,14 +584,37 @@ const AdminPayments = () => {
                 <Label>ملاحظات الإدارة</Label>
                 <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} placeholder="ملاحظات أو سبب الرفض..." />
               </div>
-              <div className="flex gap-2">
-                <Button onClick={handleApprove} disabled={saving} className="flex-1 bg-green-600 hover:bg-green-700">
-                  <CheckCircle className="w-4 h-4 ml-1" /> اعتماد وتفعيل
-                </Button>
-                <Button onClick={handleReject} disabled={saving} variant="destructive" className="flex-1">
-                  <XCircle className="w-4 h-4 ml-1" /> رفض
-                </Button>
-              </div>
+              {(() => {
+                const reasons = computeRiskReasons(selectedRequest);
+                const hasRisk = reasons.length > 0;
+                return (
+                  <>
+                    {hasRisk && (
+                      <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 space-y-1.5">
+                        <p className="text-sm font-semibold text-destructive flex items-center gap-1.5">
+                          <ShieldAlert className="w-4 h-4" />
+                          تحذيرات قبل الاعتماد:
+                        </p>
+                        <ul className="text-xs text-destructive/90 space-y-1 list-disc pr-5">
+                          {reasons.map((r, i) => (<li key={i}>{r}</li>))}
+                        </ul>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={requestApprove}
+                        disabled={saving}
+                        className={`flex-1 ${hasRisk ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : "bg-green-600 hover:bg-green-700"}`}
+                      >
+                        <CheckCircle className="w-4 h-4 ml-1" /> {hasRisk ? "اعتماد رغم التحذيرات" : "اعتماد وتفعيل"}
+                      </Button>
+                      <Button onClick={handleReject} disabled={saving} variant="destructive" className="flex-1">
+                        <XCircle className="w-4 h-4 ml-1" /> رفض
+                      </Button>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           )}
           </div>
