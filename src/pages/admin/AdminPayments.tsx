@@ -477,13 +477,31 @@ const AdminPayments = () => {
                     ⚠️ هذا السند تم استخدامه {selectedRequest.duplicate_count} مرات
                   </div>
                 )}
-                {(selectedRequest.extracted_amount || selectedRequest.extracted_reference || selectedRequest.extracted_date) && (
+                {(selectedRequest.extracted_amount || selectedRequest.extracted_reference || selectedRequest.extracted_date || selectedRequest.extracted_recipient) && (
                   <div className="space-y-1 text-xs">
                     <p className="font-semibold text-muted-foreground">بيانات مستخرجة من السند:</p>
                     {selectedRequest.extracted_amount && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">المبلغ المستخرج:</span>
-                        <span className="font-medium">{selectedRequest.extracted_amount.toLocaleString()}</span>
+                        <span className={`font-medium ${selectedRequest.expected_amount != null && Number(selectedRequest.expected_amount) !== Number(selectedRequest.extracted_amount) ? "text-destructive" : ""}`}>
+                          {selectedRequest.extracted_amount.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                    {selectedRequest.extracted_recipient && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">المستلم في السند:</span>
+                        <span className={`font-medium ${selectedRequest.recipient_match === false ? "text-destructive" : ""}`}>
+                          {selectedRequest.extracted_recipient}
+                        </span>
+                      </div>
+                    )}
+                    {selectedRequest.recipient_match !== null && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">تطابق المستلم:</span>
+                        <span className={`font-medium ${selectedRequest.recipient_match ? "text-green-600" : "text-destructive"}`}>
+                          {selectedRequest.recipient_match ? "✔ مطابق" : "✘ غير مطابق"}
+                        </span>
                       </div>
                     )}
                     {selectedRequest.extracted_reference && (
