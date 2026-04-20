@@ -177,6 +177,26 @@ serve(async (req) => {
       }
     }
 
+    // Phase 4: Compare extracted amount with expected amount on this request
+    // Any mismatch (even 1 unit) = review (decided by user)
+    try {
+      const { data: prRow } = await adminClient
+        .from("payment_requests")
+        .select("expected_amount")
+        .eq("id", payment_request_id)
+        .maybeSingle();
+
+      if (prRow?.expected_amount != null && extractedAmount != null) {
+        const expected = Number(prRow.expected_amount);
+        if (!Number.isNaN(expected) && expected !== extractedAmount) {
+          // promote to at least review; keep suspicious if already there
+          if (fraudStatus === "clean") fraudStatus = "review";
+        }
+      }
+    } catch (e) {
+      console.error("amount-vs-expected check failed (non-critical):", e);
+    }
+
     // Update the payment request with fraud data
     const { error: updateErr } = await adminClient
       .from("payment_requests")
