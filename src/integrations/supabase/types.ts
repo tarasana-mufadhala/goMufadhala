@@ -92,6 +92,51 @@ export type Database = {
         }
         Relationships: []
       }
+      auto_approval_log: {
+        Row: {
+          amount: number
+          created_at: string
+          expected_amount: number | null
+          extracted_amount: number | null
+          extracted_recipient: string | null
+          extracted_sender: string | null
+          fraud_status: string | null
+          id: string
+          payment_request_id: string
+          receipt_hash: string | null
+          recipient_match: boolean | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          expected_amount?: number | null
+          extracted_amount?: number | null
+          extracted_recipient?: string | null
+          extracted_sender?: string | null
+          fraud_status?: string | null
+          id?: string
+          payment_request_id: string
+          receipt_hash?: string | null
+          recipient_match?: boolean | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          expected_amount?: number | null
+          extracted_amount?: number | null
+          extracted_recipient?: string | null
+          extracted_sender?: string | null
+          fraud_status?: string | null
+          id?: string
+          payment_request_id?: string
+          receipt_hash?: string | null
+          recipient_match?: boolean | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       chat_usage: {
         Row: {
           created_at: string
@@ -876,6 +921,8 @@ export type Database = {
           admin_notes: string | null
           amount: number
           approval_override: boolean
+          auto_approval_scheduled_at: string | null
+          auto_approved: boolean
           created_at: string
           currency: string
           duplicate_count: number
@@ -906,6 +953,8 @@ export type Database = {
           admin_notes?: string | null
           amount: number
           approval_override?: boolean
+          auto_approval_scheduled_at?: string | null
+          auto_approved?: boolean
           created_at?: string
           currency?: string
           duplicate_count?: number
@@ -936,6 +985,8 @@ export type Database = {
           admin_notes?: string | null
           amount?: number
           approval_override?: boolean
+          auto_approval_scheduled_at?: string | null
+          auto_approved?: boolean
           created_at?: string
           currency?: string
           duplicate_count?: number
@@ -1546,6 +1597,12 @@ export type Database = {
           normalized_hash: string
           occurrence_count: number
           sample_text: string
+        }[]
+      }
+      get_standard_plan_amounts: {
+        Args: never
+        Returns: {
+          amount: number
         }[]
       }
       get_top_repeated_past_questions_for_students: {

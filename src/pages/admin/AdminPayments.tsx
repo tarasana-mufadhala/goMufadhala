@@ -24,6 +24,7 @@ interface PaymentRequest {
   extracted_recipient: string | null; extracted_sender: string | null;
   recipient_match: boolean | null; expected_amount: number | null;
   approval_override: boolean; override_reason: string | null;
+  auto_approval_scheduled_at: string | null; auto_approved: boolean;
 }
 
 interface StudentInfo {
@@ -414,6 +415,16 @@ const AdminPayments = () => {
                     {req.admin_notes && <p className="text-xs text-muted-foreground">ملاحظات: {req.admin_notes}</p>}
                     <div className="flex items-center gap-2 flex-wrap">
                       {fraudBadge(req.fraud_status, req.duplicate_count)}
+                      {req.auto_approved && (
+                        <Badge className="bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/30 text-[10px]">
+                          ⚡ اعتماد تلقائي
+                        </Badge>
+                      )}
+                      {req.status === "pending" && req.auto_approval_scheduled_at && (
+                        <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30 text-[10px]">
+                          ⏱ اعتماد مجدول خلال دقيقة
+                        </Badge>
+                      )}
                       {req.duplicate_count > 0 && (
                         <span className="text-xs text-destructive font-medium">⚠️ هذا السند تم استخدامه {req.duplicate_count} مرات</span>
                       )}

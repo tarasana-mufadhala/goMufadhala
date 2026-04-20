@@ -254,6 +254,42 @@ serve(async (req) => {
       console.error("amount-vs-expected check failed (non-critical):", e);
     }
 
+    // Phase 5: تقييم الأهلية للاعتماد التلقائي (شروط صارمة جداً)
+    let autoApprovalScheduledAt: string | null = null;
+    try {
+      const { data: prFull } = await adminClient
+        .from("payment_requests")
+        .select("expected_amount, amount, status")
+        .eq("id", payment_request_id)
+        .maybeSingle();
+
+      const expected = prFull?.expected_amount != null ? Number(prFull.expected_amount) : null;
+      const amountMatchesExpected =
+        expected != null && extractedAmount != null && expected === extractedAmount;
+
+      // التحقق من أن المبلغ قياسي
+      let isStandardAmount = false;
+      if (prFull?.amount != null) {
+        const { data: stdAmounts } = await adminClient.rpc("get_standard_plan_amounts");
+        const set = new Set((stdAmounts ?? []).map((r: { amount: number }) => Number(r.amount)));
+        isStandardAmount = set.has(Number(prFull.amount));
+      }
+
+      const eligible =
+        prFull?.status === "pending" &&
+        fraudStatus === "clean" &&
+        recipientMatch === true &&
+        amountMatchesExpected &&
+        isStandardAmount;
+
+      if (eligible) {
+        // جدولة الاعتماد بعد 60 ثانية (هامش أمان للإلغاء اليدوي)
+        autoApprovalScheduledAt = new Date(Date.now() + 60_000).toISOString();
+      }
+    } catch (e) {
+      console.error("auto-approval eligibility check failed (non-critical):", e);
+    }
+
     // Update the payment request with fraud data + extracted recipient/sender + match
     const { error: updateErr } = await adminClient
       .from("payment_requests")
@@ -267,6 +303,7 @@ serve(async (req) => {
         recipient_match: recipientMatch,
         fraud_status: fraudStatus,
         duplicate_count: duplicateCount,
+        auto_approval_scheduled_at: autoApprovalScheduledAt,
       })
       .eq("id", payment_request_id);
 
@@ -284,6 +321,7 @@ serve(async (req) => {
       extracted_sender: extractedSender,
       recipient_match: recipientMatch,
       expected_recipient: expectedRecipient,
+      auto_approval_scheduled_at: autoApprovalScheduledAt,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
