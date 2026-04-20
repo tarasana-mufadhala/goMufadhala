@@ -254,7 +254,7 @@ serve(async (req) => {
       console.error("amount-vs-expected check failed (non-critical):", e);
     }
 
-    // Update the payment request with fraud data
+    // Update the payment request with fraud data + extracted recipient/sender + match
     const { error: updateErr } = await adminClient
       .from("payment_requests")
       .update({
@@ -262,6 +262,9 @@ serve(async (req) => {
         extracted_amount: extractedAmount,
         extracted_reference: extractedReference,
         extracted_date: extractedDate,
+        extracted_recipient: extractedRecipient,
+        extracted_sender: extractedSender,
+        recipient_match: recipientMatch,
         fraud_status: fraudStatus,
         duplicate_count: duplicateCount,
       })
@@ -277,6 +280,10 @@ serve(async (req) => {
       extracted_amount: extractedAmount,
       extracted_reference: extractedReference,
       extracted_date: extractedDate,
+      extracted_recipient: extractedRecipient,
+      extracted_sender: extractedSender,
+      recipient_match: recipientMatch,
+      expected_recipient: expectedRecipient,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
